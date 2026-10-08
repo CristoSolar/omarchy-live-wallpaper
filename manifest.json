@@ -2,17 +2,26 @@
   "schemaVersion": 1,
   "id": "io.github.cristosolar.livebg",
   "name": "Live Background",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "CristoSolar",
   "license": "MIT",
-  "description": "Fondos animados: si el fondo X.jpg tiene un X.mp4 o X.webm al lado, se reproduce en loop, sin audio, y se pausa con una ventana en pantalla completa. Reemplaza al fondo de fabrica; bg next, el switcher y la pantalla de bloqueo siguen usando el poster.",
+  "description": "Fondo animado por tema: cada tema puede tener un video (archivo o YouTube) que se elige desde la barra. Se reproduce en loop, sin audio, y se pausa cuando hay ventanas encima. Al volver a un tema se reaplica su video o la imagen elegida.",
   "omarchy": {
     "clonedFrom": "omarchy.background"
   },
   "kinds": [
-    "service"
+    "service",
+    "bar-widget"
   ],
   "entryPoints": {
-    "service": "Background.qml"
+    "service": "Background.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Fondo",
+    "description": "Elegir entre imagen del tema o video",
+    "category": "Appearance",
+    "defaultSection": "right",
+    "allowMultiple": false
   }
 }

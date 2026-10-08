@@ -1,86 +1,169 @@
 #!/bin/bash
-# livebg add <archivo|url>: agrega un fondo animado al tema actual.
-# Deja un par nombre.jpg (poster) + nombre.mp4|webm en la carpeta de fondos del
-# tema y lo fija como fondo. El plugin reproduce el video hermano del poster.
+# livebg: un video de fondo por tema de Omarchy.
+#
+#   livebg set <archivo|url>   asigna (o reemplaza) el video del tema actual y lo activa
+#   livebg video               activa el video del tema actual
+#   livebg image               vuelve a la ultima imagen elegida en el tema (o la primera)
+#   livebg record <fondo>      registra una eleccion del usuario (lo llama el plugin)
+#   livebg restore <tema>      reaplica lo registrado para el tema (hook theme-set)
+#   livebg status              JSON para el menu de la barra
+#
+# El video vive en ~/.local/share/livebg/<tema>/video-<n>.{mp4,webm} con su poster
+# video-<n>.jpg. El fondo del sistema apunta al poster; el plugin reproduce el
+# video hermano. El nombre cambia en cada `set` para que el shell vea un fondo nuevo.
 set -euo pipefail
 
 fail() { echo "livebg: $*" >&2; exit 1; }
-
-usage() {
-  echo "Uso: livebg add <archivo-de-video|url-de-youtube>" >&2
-  exit 2
-}
-
 need() { command -v "$1" >/dev/null || fail "falta '$1' (instalalo con: omarchy pkg add $1)"; }
 
-slug() {
-  local s
-  s=$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null || printf '%s' "$1")
-  s=$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-60)
-  printf '%s' "${s:-video}"
+current=$HOME/.local/state/omarchy/current
+theme_name() { cat "$current/theme.name" 2>/dev/null || fail "no se pudo leer el tema actual"; }
+video_dir() { echo "$HOME/.local/share/livebg/$1"; }
+state_dir() { echo "$HOME/.local/state/livebg/$1"; }
+poster_of() { find "$(video_dir "$1")" -maxdepth 1 -name 'video-*.jpg' 2>/dev/null | head -1; }
+
+theme_images() {
+  find -L "$HOME/.config/omarchy/backgrounds/$1/" "$current/theme/backgrounds/" -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+    2>/dev/null | sort || true # una de las dos carpetas puede no existir
 }
 
-[[ ${1:-} == add && -n ${2:-} ]] || usage
-src=$2
+# Descarga o copia el video a $1/v.<ext>; deja el titulo en $1/title.
+fetch() {
+  local out=$1 src=$2 video
+  if [[ $src =~ ^https?:// ]]; then
+    need yt-dlp
+    # Solo video, <=1080p, h264 primero para que decodifique la GPU. Solo los
+    # primeros 5 min: los "loops de 10 horas" pesan decenas de GB y es el mismo loop.
+    # Con --download-sections yt-dlp no informa porcentaje: se reportan los MB.
+    yt-dlp --no-playlist --quiet --no-progress \
+      -f 'bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/bv*' \
+      --remux-video mp4 --download-sections '*0-300' \
+      -o "$out/dl/%(title)s.%(ext)s" "$src" &
+    local pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+      echo "progress $(($(du -sk "$out/dl" 2>/dev/null | cut -f1 || echo 0) / 1024))"
+      sleep 1
+    done
+    wait "$pid" || fail "yt-dlp no pudo descargar el video. Si YouTube cambio algo, actualiza yt-dlp: omarchy pkg add yt-dlp"
+    video=$(find "$out/dl" -maxdepth 1 -type f -name '*.mp4' | head -1)
+    [[ -n $video ]] || fail "yt-dlp no dejo un mp4"
+  else
+    [[ -f $src ]] || fail "no existe: $src"
+    video=$src
+  fi
 
-need ffmpeg
-need ffprobe
+  ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$video" 2>/dev/null | grep -qx video ||
+    fail "no es un video: $src"
 
-theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null) || fail "no se pudo leer el tema actual"
-dest=$HOME/.config/omarchy/backgrounds/$theme
+  basename "${video%.*}" >"$out/title"
+  local ext=${video##*.}
+  ext=${ext,,}
+  # QtMultimedia busca .mp4 o .webm; otros contenedores se remuxean sin recodificar.
+  if [[ $ext == mp4 || $ext == webm ]]; then
+    cp "$video" "$out/v.$ext"
+  else
+    ffmpeg -loglevel error -i "$video" -map 0:v:0 -c copy -an "$out/v.mp4" ||
+      fail "no se pudo convertir a mp4: $src"
+  fi
+}
 
-mkdir -p "$dest"
-work=$(mktemp -d)
-# Staging dentro de la carpeta destino: el mv final es un rename atomico.
-staged=$(mktemp -d "$dest/.livebg.XXXXXX")
-trap 'rm -rf "$work" "$staged"' EXIT
+cmd_set() {
+  [[ -n ${1:-} ]] || fail "uso: livebg set <archivo|url>"
+  need ffmpeg
+  need ffprobe
+  local theme dir
+  theme=$(theme_name)
+  dir=$(video_dir "$theme")
+  mkdir -p "$dir"
+  # Staging dentro de la carpeta destino: el mv final es un rename atomico.
+  # Global, no local: el trap de EXIT corre cuando la funcion ya termino.
+  staged=$(mktemp -d "$dir/.staging.XXXXXX")
+  trap 'rm -rf "$staged"' EXIT
 
-if [[ $src =~ ^https?:// ]]; then
-  need yt-dlp
-  echo "Descargando con yt-dlp..."
-  # Solo video, <=1080p, h264 primero para que decodifique la GPU. Solo los
-  # primeros 5 min: los "loops de 10 horas" pesan decenas de GB y es el mismo loop.
-  yt-dlp --no-playlist --quiet --progress \
-    -f 'bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/bv*' \
-    --remux-video mp4 \
-    --download-sections '*0-300' \
-    -o "$work/%(title)s.%(ext)s" "$src" ||
-    fail "yt-dlp no pudo descargar el video. Si YouTube cambio algo, actualiza yt-dlp: omarchy pkg add yt-dlp"
-  video=$(find "$work" -maxdepth 1 -type f -name '*.mp4' | head -1)
-  [[ -n $video ]] || fail "yt-dlp no dejo un mp4"
-else
-  [[ -f $src ]] || fail "no existe: $src"
-  video=$src
-fi
+  fetch "$staged" "$1"
+  local video ext name old
+  video=$(find "$staged" -maxdepth 1 -name 'v.*')
+  ext=${video##*.}
+  ffmpeg -loglevel error -i "$video" -frames:v 1 -q:v 2 "$staged/p.jpg" || fail "no se pudo extraer el poster"
 
-ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$video" 2>/dev/null | grep -qx video ||
-  fail "no es un video: $src"
+  name=video-$(date +%s%N)
+  old=$(find "$dir" -maxdepth 1 -name 'video-*' -type f)
+  # Video antes que poster: el plugin busca el video cuando ve el poster.
+  mv "$video" "$dir/$name.$ext"
+  mv "$staged/p.jpg" "$dir/$name.jpg"
+  mv "$staged/title" "$dir/title"
+  omarchy theme bg set "$dir/$name.jpg"
+  # shellcheck disable=SC2086 # nombres generados por nosotros, sin espacios
+  [[ -z $old ]] || rm -f $old
+  echo "Video asignado al tema $theme"
+}
 
-name=$(slug "$(basename "${video%.*}")")
-ext=${video##*.}
-ext=${ext,,}
+cmd_video() {
+  local poster
+  poster=$(poster_of "$(theme_name)")
+  [[ -n $poster ]] || fail "este tema no tiene video"
+  omarchy theme bg set "$poster"
+}
 
-# QtMultimedia busca .mp4 o .webm; otros contenedores se remuxean sin recodificar.
-if [[ $ext == mp4 || $ext == webm ]]; then
-  cp "$video" "$staged/v.$ext"
-else
-  ext=mp4
-  ffmpeg -loglevel error -i "$video" -map 0:v:0 -c copy -an "$staged/v.mp4" ||
-    fail "no se pudo convertir a mp4: $src"
-fi
-ffmpeg -loglevel error -i "$staged/v.$ext" -frames:v 1 -q:v 2 "$staged/p.jpg" ||
-  fail "no se pudo extraer el poster"
+cmd_image() {
+  local theme last
+  theme=$(theme_name)
+  last=$(cat "$(state_dir "$theme")/last-image" 2>/dev/null || true)
+  [[ -f $last ]] || last=$(theme_images "$theme" | head -1)
+  [[ -n $last ]] || fail "el tema no tiene imagenes"
+  omarchy theme bg set "$last"
+}
 
-final=$name
-n=2
-while [[ -e $dest/$final.jpg || -e $dest/$final.mp4 || -e $dest/$final.webm ]]; do
-  final=$name-$n
-  n=$((n + 1))
-done
+cmd_record() {
+  local path=${1:-} theme st
+  [[ -n $path ]] || return 0
+  theme=$(theme_name)
+  st=$(state_dir "$theme")
+  mkdir -p "$st"
+  if [[ $path == "$(video_dir "$theme")"/video-*.jpg ]]; then
+    echo video >"$st/mode"
+  else
+    echo image >"$st/mode"
+    echo "$path" >"$st/last-image"
+  fi
+}
 
-# Video primero: el poster aparece en `bg next` solo cuando su video ya esta.
-mv "$staged/v.$ext" "$dest/$final.$ext"
-mv "$staged/p.jpg" "$dest/$final.jpg"
+cmd_restore() {
+  local theme=${1:-} st mode target=""
+  [[ -n $theme ]] || return 0
+  st=$(state_dir "$theme")
+  mode=$(cat "$st/mode" 2>/dev/null || true)
+  case $mode in
+    video) target=$(poster_of "$theme") ;;
+    image) target=$(cat "$st/last-image" 2>/dev/null || true) ;;
+  esac
+  [[ -n $target && -f $target ]] || return 0
+  omarchy theme bg set "$target"
+}
 
-omarchy theme bg set "$dest/$final.jpg"
-echo "Agregado: $dest/$final.jpg (+ .$ext)"
+cmd_status() {
+  local theme st poster
+  theme=$(theme_name)
+  st=$(state_dir "$theme")
+  poster=$(poster_of "$theme")
+  jq -n \
+    --arg theme "$theme" \
+    --arg mode "$(cat "$st/mode" 2>/dev/null || echo image)" \
+    --arg poster "$poster" \
+    --arg title "$(cat "$(video_dir "$theme")/title" 2>/dev/null || true)" \
+    --arg lastImage "$(cat "$st/last-image" 2>/dev/null || true)" \
+    --arg current "$(readlink -f "$current/background" 2>/dev/null || true)" \
+    '{theme: $theme, mode: $mode, hasVideo: ($poster != ""), poster: $poster,
+      videoTitle: $title, lastImage: $lastImage, current: $current}'
+}
+
+case ${1:-} in
+  set) cmd_set "${2:-}" ;;
+  video) cmd_video ;;
+  image) cmd_image ;;
+  record) cmd_record "${2:-}" ;;
+  restore) cmd_restore "${2:-}" ;;
+  status) cmd_status ;;
+  *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac

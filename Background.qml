@@ -30,6 +30,108 @@ Item {
   // Video hermano del poster mostrado (X.jpg -> X.mp4|X.webm), "" si no hay.
   property string videoPath: ""
 
+  // --- Menu de la barra: estado y acciones (el widget llega via shell.serviceFor) ---
+  readonly property string livebgBin: Qt.resolvedUrl("bin/livebg").toString().replace("file://", "")
+  property var status: ({})
+  property bool busy: false
+  property int downloadedMb: -1
+  property string errorText: ""
+
+  function refreshStatus() {
+    if (!statusProc.running) statusProc.running = true
+  }
+
+  // Solo elecciones del usuario: themeTransition (cambio de tema) no pasa por aca.
+  function recordChoice(path) {
+    recordProc.command = [livebgBin, "record", String(path || "")]
+    recordProc.running = true
+  }
+
+  function useVideo() { runAction(["video"]) }
+  function useImage() { runAction(["image"]) }
+  function pickImage() { if (!bgSwitchProc.running) bgSwitchProc.running = true }
+
+  function pickVideoFile() {
+    if (busy || pickProc.running) return
+    errorText = ""
+    pickProc.running = true
+  }
+
+  function setVideo(source) {
+    source = String(source || "").trim()
+    if (!source || busy) return
+    busy = true
+    downloadedMb = -1
+    errorText = ""
+    setProc.command = [livebgBin, "set", source]
+    setProc.running = true
+  }
+
+  function runAction(args) {
+    actionProc.command = [livebgBin].concat(args)
+    actionProc.running = true
+  }
+
+  Process {
+    id: statusProc
+    command: [root.livebgBin, "status"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.status = JSON.parse(text) } catch (e) { console.warn("livebg: status invalido", e) }
+      }
+    }
+  }
+
+  Process { id: recordProc; onExited: root.refreshStatus() }
+
+  Process {
+    id: actionProc
+    stderr: StdioCollector { id: actionErr }
+    onExited: function(code) {
+      root.errorText = code === 0 ? "" : String(actionErr.text || "").trim()
+      root.refreshStatus()
+    }
+  }
+
+  Process {
+    id: pickProc
+    command: ["omarchy", "file", "select", "--title", "Elegir video", "--extensions", "mp4 webm mkv mov"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var path = String(text || "").trim().split("\n")[0]
+        if (path) root.setVideo(path)
+      }
+    }
+  }
+
+  Process {
+    id: setProc
+    stdout: SplitParser {
+      onRead: function(line) {
+        var m = /^progress (\d+)$/.exec(line)
+        if (m) root.downloadedMb = parseInt(m[1])
+      }
+    }
+    stderr: StdioCollector { id: setErr }
+    onExited: function(code) {
+      root.busy = false
+      root.downloadedMb = -1
+      root.refreshStatus()
+      var theme = root.status.theme || "este tema"
+      if (code === 0) {
+        notifyProc.command = ["omarchy-notification-send", "-g", "󰸉", "Video asignado a " + theme,
+                              "Al volver a este tema se reactiva."]
+      } else {
+        root.errorText = String(setErr.text || "").trim().replace(/^livebg: /, "") || "No se pudo asignar el video"
+        notifyProc.command = ["omarchy-notification-send", "-g", "󰸉", "-u", "critical", "No se pudo asignar el video", root.errorText]
+      }
+      notifyProc.running = true
+    }
+  }
+
+  Process { id: notifyProc }
+
+
   function imageUrl(path) {
     return Util.fileUrl(path)
   }
@@ -49,6 +151,7 @@ Item {
     if (!path || (!force && finalPath === currentBackground)) return
     currentBackground = finalPath
     resolveVideo(finalPath)
+    refreshStatus()
     backgroundVersion += 1
     revealStartedVersion = -1
 
@@ -161,14 +264,17 @@ Item {
 
     function set(path: string): void {
       root.setBackground(path, false)
+      root.recordChoice(path)
     }
 
     function setInstant(path: string): void {
       root.setBackground(path, true)
+      root.recordChoice(path)
     }
 
     function transition(fromPath: string, path: string): void {
       root.transitionBackground(fromPath, path, path, false, false)
+      root.recordChoice(path)
     }
 
     function themeTransition(fromPath: string, path: string, finalPath: string, colorsB64: string, shellB64: string): void {

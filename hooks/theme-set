@@ -1,0 +1,6 @@
+#!/bin/bash
+# Hook theme-set de Omarchy: al entrar a un tema, reaplica su video o la imagen
+# que el usuario habia elegido ahi (livebg restore). Recibe el nombre del tema.
+livebg=$HOME/.config/omarchy/plugins/io.github.cristosolar.livebg/bin/livebg
+[[ -x $livebg ]] || exit 0
+exec "$livebg" restore "$1"

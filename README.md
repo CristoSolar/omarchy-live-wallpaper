@@ -1,40 +1,48 @@
 # Live Background
 
-Fondos animados para Omarchy. Video en loop, sin audio, desde un archivo o una URL de YouTube.
+Fondos animados para Omarchy: cada tema puede tener **un video** (archivo local o URL de
+YouTube) y se elige desde la barra entre la **imagen del tema** o ese video.
 
-Si el fondo actual es `X.jpg` y al lado hay un `X.mp4` (o `X.webm`), el plugin reproduce
-el video encima. El sistema sigue viendo solo el `.jpg`, así que `omarchy theme bg next`,
-el selector de fondos y la pantalla de bloqueo funcionan igual que siempre.
-
-El video solo corre en un monitor cuyo workspace está vacío; con cualquier ventana
-encima (o en pantalla completa) se pausa, como el "pausar con otra app maximizada" de
-Wallpaper Engine. Medido en una RX 6800: en pausa la GPU queda igual que con un fondo
-estático; reproduciendo un 1080p60 cuesta ~6–16 W según cuántos monitores lo muestren.
+- El video corre en loop, sin audio, y **se pausa cuando hay ventanas encima** (como el
+  "pausar con otra app maximizada" de Wallpaper Engine). En pausa, la GPU queda igual que
+  con un fondo estático; reproduciendo un 1080p60 cuesta ~6–16 W según cuántos monitores
+  lo muestren (medido en una RX 6800).
+- Al cambiar de tema y volver, se reaplica lo que tenía: su video, o la misma imagen que
+  habías elegido.
+- La pantalla de bloqueo, `omarchy theme bg next` y el selector de imágenes siguen igual:
+  para Omarchy el video es su póster (una imagen).
 
 ## Instalar
 
 ```bash
 omarchy plugin add https://github.com/CristoSolar/omarchy-live-background --enable
-ln -s ~/.config/omarchy/plugins/io.github.cristosolar.livebg/bin/livebg ~/.local/bin/livebg
+omarchy hook install theme-set ~/.config/omarchy/plugins/io.github.cristosolar.livebg/hooks/theme-set
 ```
+
+Después agrega `io.github.cristosolar.livebg` a `bar.layout.right` en
+`~/.config/omarchy/shell.json` para ver el botón 󰸉 en la barra.
 
 Reemplaza al fondo de fábrica (`omarchy.background`). Para volver al original:
 `omarchy plugin disable io.github.cristosolar.livebg`.
 
-Requiere `ffmpeg` y, para YouTube, `yt-dlp`.
+Requiere `ffmpeg`, `jq` y, para YouTube, `yt-dlp`.
 
 ## Uso
 
+Desde la barra: 󰸉 → **Imagen del tema** / **Video** → **Archivo…** o pega una URL de YouTube.
+
+Desde la terminal (`bin/livebg`):
+
 ```bash
-livebg add ~/Videos/lluvia.mp4
-livebg add "https://www.youtube.com/watch?v=..."
+livebg set ~/Videos/lluvia.mp4                    # asigna/reemplaza el video del tema actual
+livebg set "https://www.youtube.com/watch?v=..."  # ≤1080p, solo video, primeros 5 min
+livebg video                                      # activa el video del tema
+livebg image                                      # vuelve a la última imagen elegida
 ```
 
-Copia o descarga el video (YouTube: ≤1080p, solo video, primeros 5 minutos), genera el póster y deja ambos en
-`~/.config/omarchy/backgrounds/<tema>/`. Para quitar un fondo, borra los dos archivos.
-
-Para hacerlo a mano, pon `nombre.mp4` y un `nombre.jpg` (cualquier imagen; idealmente el
-primer frame) en esa carpeta.
+Archivos:
+- Video: `~/.local/share/livebg/<tema>/video-<n>.{mp4,webm}` + póster `.jpg`.
+- Lo recordado por tema: `~/.local/state/livebg/<tema>/{mode,last-image}`.
 
 ## Límites
 
@@ -43,9 +51,13 @@ primer frame) en esa carpeta.
   ni expone `setVideoFrame`, y cada monitor es otra ventana. Haría falta un módulo C++.
 - No se pausa con la pantalla bloqueada (el estado de bloqueo no es accesible para
   plugins de terceros sin hacer polling).
+- Al volver a un tema hay un parpadeo: Omarchy pone su imagen por defecto y el hook la
+  corrige medio segundo después.
+- La descarga de YouTube muestra MB, no porcentaje: con `--download-sections` yt-dlp no
+  informa el total.
 - Descargar de YouTube va contra sus términos de uso. Si `yt-dlp` falla, actualízalo.
-- `Background.qml` es una copia del de fábrica más la capa de video. Si Omarchy lo
-  cambia, hay que sincronizarlo.
+- `Background.qml` es una copia del de fábrica más la capa de video y el estado del
+  menú. Si Omarchy lo cambia, hay que sincronizarlo.
 
 ## Pruebas
 
