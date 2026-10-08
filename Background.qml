@@ -330,7 +330,10 @@ Item {
         anchors.fill: parent
         // Durante la transicion manda el poster; el video entra al terminar.
         readonly property bool active: root.videoPath !== "" && root.incomingBackground === ""
-        readonly property bool paused: Hyprland.monitorFor(panel.screen)?.activeWorkspace?.hasFullscreen ?? false
+        // Como Wallpaper Engine con "otra app maximizada": en un tiling WM cualquier
+        // ventana en el workspace tapa el fondo, asi que solo corre con el escritorio vacio.
+        readonly property var workspace: Hyprland.monitorFor(panel.screen)?.activeWorkspace ?? null
+        readonly property bool paused: workspace !== null && (workspace.hasFullscreen || workspace.toplevels.values.length > 0)
         visible: active
         opacity: player.playbackState !== MediaPlayer.StoppedState && player.hasVideo ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 300 } }
