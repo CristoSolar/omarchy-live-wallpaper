@@ -1,0 +1,3 @@
+Fondos animados en Omarchy, uno por tema: elige un video o pega un link de YouTube desde la barra, y se pausa solo cuando una ventana tapa el escritorio. Sin Steam.
+
+omarchy plugin add https://github.com/CristoSolar/omarchy-live-wallpaper

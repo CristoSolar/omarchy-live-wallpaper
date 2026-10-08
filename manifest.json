@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "io.github.cristosolar.livebg",
-  "name": "Live Background",
+  "name": "Live Wallpaper",
   "version": "0.2.0",
   "author": "CristoSolar",
   "license": "MIT",
-  "description": "Fondo animado por tema: cada tema puede tener un video (archivo o YouTube) que se elige desde la barra. Se reproduce en loop, sin audio, y se pausa cuando hay ventanas encima. Al volver a un tema se reaplica su video o la imagen elegida.",
+  "description": "Animated wallpapers for Omarchy, one video per theme. Pick the theme image or a video from the bar, using a local file or a YouTube link (downloaded once with yt-dlp, never streamed). The video loops silently and pauses whenever a window covers the desktop, costing the same GPU as a static wallpaper. Switch themes and come back: its video, or the image you chose, returns. The lock screen and bg switcher keep working.",
   "omarchy": {
     "clonedFrom": "omarchy.background"
   },
@@ -18,8 +18,8 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Fondo",
-    "description": "Elegir entre imagen del tema o video",
+    "displayName": "Live Wallpaper",
+    "description": "Theme image or video background",
     "category": "Appearance",
     "defaultSection": "right",
     "allowMultiple": false

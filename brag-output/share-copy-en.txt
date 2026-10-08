@@ -1,0 +1,3 @@
+Live wallpapers for Omarchy, one per theme: pick a video or paste a YouTube link from the bar, and it pauses itself whenever a window covers the desktop. No Steam.
+
+omarchy plugin add https://github.com/CristoSolar/omarchy-live-wallpaper

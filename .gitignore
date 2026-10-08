@@ -1,0 +1,5 @@
+# Archivos de trabajo del video (frames, audio, html de render)
+brag-output/work/
+
+# Specs y planes de implementacion: quedan fuera del repo publico.
+docs/superpowers/

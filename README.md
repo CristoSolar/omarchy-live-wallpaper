@@ -1,70 +1,89 @@
-# Live Background
+# Omarchy Live Wallpaper
 
-Fondos animados para Omarchy: cada tema puede tener **un video** (archivo local o URL de
-YouTube) y se elige desde la barra entre la **imagen del tema** o ese video.
+*[Leer en español](README.es.md)*
 
-- El video corre en loop, sin audio, y **se pausa cuando hay ventanas encima** (como el
-  "pausar con otra app maximizada" de Wallpaper Engine). En pausa, la GPU queda igual que
-  con un fondo estático; reproduciendo un 1080p60 cuesta ~6–16 W según cuántos monitores
-  lo muestren (medido en una RX 6800).
-- Al cambiar de tema y volver, se reaplica lo que tenía: su video, o la misma imagen que
-  habías elegido.
-- La pantalla de bloqueo, `omarchy theme bg next` y el selector de imágenes siguen igual:
-  para Omarchy el video es su póster (una imagen).
+[![Video](brag-output/brag-en.jpg)](brag-output/brag-en.mp4)
 
-## Instalar
+Animated wallpapers for [Omarchy](https://omarchy.org): every theme can have **one video**
+(a local file or a YouTube link), and from the bar you choose between the **theme image**
+and that video.
+
+- The video loops silently and **pauses whenever a window covers the desktop**, like
+  Wallpaper Engine's "pause when another app is maximized". While paused, the GPU sits at
+  the same level as with a static wallpaper; playing a 1080p60 video costs roughly 6–16 W
+  depending on how many monitors show it (measured on an RX 6800).
+- Switch themes and come back: its video returns, or the exact image you had picked.
+- The lock screen, `omarchy theme bg next` and the background switcher keep working:
+  to Omarchy, the video is just its poster image.
+
+## Install
 
 ```bash
-omarchy plugin add https://github.com/CristoSolar/omarchy-live-background --enable
+omarchy plugin add https://github.com/CristoSolar/omarchy-live-wallpaper --enable
 omarchy hook install theme-set ~/.config/omarchy/plugins/io.github.cristosolar.livebg/hooks/theme-set
 ```
 
-Después agrega `io.github.cristosolar.livebg` a `bar.layout.right` en
-`~/.config/omarchy/shell.json` para ver el botón 󰸉 en la barra.
+Enabling it adds the 󰸉 button to the right side of the bar; move it with
+`omarchy bar move io.github.cristosolar.livebg`. The hook is optional: without it
+everything works except restoring a theme's video or image when you return to it.
 
-Reemplaza al fondo de fábrica (`omarchy.background`). Para volver al original:
-`omarchy plugin disable io.github.cristosolar.livebg`.
+It replaces the stock background renderer (`omarchy.background`), using Omarchy's own
+clone mechanism. To go back: `omarchy plugin disable io.github.cristosolar.livebg`.
 
-Requiere `ffmpeg`, `jq` y, para YouTube, `yt-dlp`.
+Requires `ffmpeg`, `jq` and, for YouTube, `yt-dlp`. The menu UI is in Spanish.
 
-## Uso
+To uninstall: `omarchy plugin remove io.github.cristosolar.livebg` and delete
+`~/.config/omarchy/hooks/theme-set.d/theme-set`. Videos stay in `~/.local/share/livebg/`
+until you delete them.
 
-Desde la barra: 󰸉 → **Imagen del tema** / **Video** → **Archivo…** o pega una URL de YouTube.
+## Usage
 
-Desde la terminal (`bin/livebg`):
+From the bar: 󰸉 → **Imagen del tema** (theme image) / **Video** → **Archivo…** (file) or
+paste a YouTube URL.
+
+From a terminal (`bin/livebg`):
 
 ```bash
-livebg set ~/Videos/lluvia.mp4                    # asigna/reemplaza el video del tema actual
-livebg set "https://www.youtube.com/watch?v=..."  # ≤1080p, solo video, primeros 5 min
-livebg video                                      # activa el video del tema
-livebg image                                      # vuelve a la última imagen elegida
+livebg set ~/Videos/rain.mp4                      # set/replace the current theme's video
+livebg set "https://www.youtube.com/watch?v=..."  # ≤1080p, video only, first 5 minutes
+livebg video                                      # switch to the theme's video
+livebg image                                      # back to the last image you picked
 ```
 
-Archivos:
-- Video: `~/.local/share/livebg/<tema>/video-<n>.{mp4,webm}` + póster `.jpg`.
-- Lo recordado por tema: `~/.local/state/livebg/<tema>/{mode,last-image}`.
+Files:
+- Video: `~/.local/share/livebg/<theme>/video-<n>.{mp4,webm}` plus a `.jpg` poster.
+- What each theme remembers: `~/.local/state/livebg/<theme>/{mode,last-image}`.
 
-## Límites
+## How it works
 
-- Un decodificador por monitor que esté mostrando el video. Compartir uno no se puede en
-  QML puro: `MediaPlayer.videoOutput` acepta una sola salida, `VideoSink` no es creable
-  ni expone `setVideoFrame`, y cada monitor es otra ventana. Haría falta un módulo C++.
-- No se pausa con la pantalla bloqueada (el estado de bloqueo no es accesible para
-  plugins de terceros sin hacer polling).
-- Al volver a un tema hay un parpadeo: Omarchy pone su imagen por defecto y el hook la
-  corrige medio segundo después.
-- La descarga de YouTube muestra MB, no porcentaje: con `--download-sections` yt-dlp no
-  informa el total.
-- Descargar de YouTube va contra sus términos de uso. Si `yt-dlp` falla, actualízalo.
-- `Background.qml` es una copia del de fábrica más la capa de video y el estado del
-  menú. Si Omarchy lo cambia, hay que sincronizarlo.
+The system background always points at the poster image. The plugin, a clone of
+`omarchy.background`, looks for a sibling `video-<n>.mp4|webm` next to that poster and
+plays it on top with QtMultimedia (hardware decoding through FFmpeg). Pausing follows
+Hyprland's workspace state, with no polling. User choices arrive through the `background
+set` IPC call, while theme switches arrive through `themeTransition`, which is how the
+plugin tells "you picked this" apart from "the theme changed".
 
-## Pruebas
+## Limits
+
+- One decoder per monitor that is showing the video. Sharing one is not possible in pure
+  QML: `MediaPlayer.videoOutput` takes a single output, `VideoSink` cannot be created and
+  has no `setVideoFrame`, and each monitor is a separate window.
+- It does not pause while the screen is locked: the lock state is not available to
+  third-party plugins without polling.
+- Returning to a theme flickers once: Omarchy sets its default image and the hook
+  corrects it half a second later.
+- YouTube downloads show MB, not a percentage: with `--download-sections`, yt-dlp does not
+  report a total.
+- Downloading from YouTube is against its terms of service. If `yt-dlp` breaks, update it.
+- `Background.qml` is a copy of the stock one plus the video layer and the menu state; it
+  has to be synced if Omarchy changes the original.
+
+## Tests
 
 ```bash
 ./test.sh
 ```
 
-## Licencia
+## License
 
 MIT
