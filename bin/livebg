@@ -38,10 +38,12 @@ trap 'rm -rf "$work" "$staged"' EXIT
 if [[ $src =~ ^https?:// ]]; then
   need yt-dlp
   echo "Descargando con yt-dlp..."
-  # Solo video, <=1080p, h264 primero para que decodifique la GPU.
+  # Solo video, <=1080p, h264 primero para que decodifique la GPU. Solo los
+  # primeros 5 min: los "loops de 10 horas" pesan decenas de GB y es el mismo loop.
   yt-dlp --no-playlist --quiet --progress \
     -f 'bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/bv*' \
     --remux-video mp4 \
+    --download-sections '*0-300' \
     -o "$work/%(title)s.%(ext)s" "$src" ||
     fail "yt-dlp no pudo descargar el video. Si YouTube cambio algo, actualiza yt-dlp: omarchy pkg add yt-dlp"
   video=$(find "$work" -maxdepth 1 -type f -name '*.mp4' | head -1)

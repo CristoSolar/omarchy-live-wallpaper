@@ -27,7 +27,7 @@ livebg add ~/Videos/lluvia.mp4
 livebg add "https://www.youtube.com/watch?v=..."
 ```
 
-Copia o descarga el video (YouTube: ≤1080p, solo video), genera el póster y deja ambos en
+Copia o descarga el video (YouTube: ≤1080p, solo video, primeros 5 minutos), genera el póster y deja ambos en
 `~/.config/omarchy/backgrounds/<tema>/`. Para quitar un fondo, borra los dos archivos.
 
 Para hacerlo a mano, pon `nombre.mp4` y un `nombre.jpg` (cualquier imagen; idealmente el
