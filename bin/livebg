@@ -1,0 +1,84 @@
+#!/bin/bash
+# livebg add <archivo|url>: agrega un fondo animado al tema actual.
+# Deja un par nombre.jpg (poster) + nombre.mp4|webm en la carpeta de fondos del
+# tema y lo fija como fondo. El plugin reproduce el video hermano del poster.
+set -euo pipefail
+
+fail() { echo "livebg: $*" >&2; exit 1; }
+
+usage() {
+  echo "Uso: livebg add <archivo-de-video|url-de-youtube>" >&2
+  exit 2
+}
+
+need() { command -v "$1" >/dev/null || fail "falta '$1' (instalalo con: omarchy pkg add $1)"; }
+
+slug() {
+  local s
+  s=$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null || printf '%s' "$1")
+  s=$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-60)
+  printf '%s' "${s:-video}"
+}
+
+[[ ${1:-} == add && -n ${2:-} ]] || usage
+src=$2
+
+need ffmpeg
+need ffprobe
+
+theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null) || fail "no se pudo leer el tema actual"
+dest=$HOME/.config/omarchy/backgrounds/$theme
+
+mkdir -p "$dest"
+work=$(mktemp -d)
+# Staging dentro de la carpeta destino: el mv final es un rename atomico.
+staged=$(mktemp -d "$dest/.livebg.XXXXXX")
+trap 'rm -rf "$work" "$staged"' EXIT
+
+if [[ $src =~ ^https?:// ]]; then
+  need yt-dlp
+  echo "Descargando con yt-dlp..."
+  # Solo video, <=1080p, h264 primero para que decodifique la GPU.
+  yt-dlp --no-playlist --quiet --progress \
+    -f 'bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080]/bv*' \
+    --remux-video mp4 \
+    -o "$work/%(title)s.%(ext)s" "$src" ||
+    fail "yt-dlp no pudo descargar el video. Si YouTube cambio algo, actualiza yt-dlp: omarchy pkg add yt-dlp"
+  video=$(find "$work" -maxdepth 1 -type f -name '*.mp4' | head -1)
+  [[ -n $video ]] || fail "yt-dlp no dejo un mp4"
+else
+  [[ -f $src ]] || fail "no existe: $src"
+  video=$src
+fi
+
+ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$video" 2>/dev/null | grep -qx video ||
+  fail "no es un video: $src"
+
+name=$(slug "$(basename "${video%.*}")")
+ext=${video##*.}
+ext=${ext,,}
+
+# QtMultimedia busca .mp4 o .webm; otros contenedores se remuxean sin recodificar.
+if [[ $ext == mp4 || $ext == webm ]]; then
+  cp "$video" "$staged/v.$ext"
+else
+  ext=mp4
+  ffmpeg -loglevel error -i "$video" -map 0:v:0 -c copy -an "$staged/v.mp4" ||
+    fail "no se pudo convertir a mp4: $src"
+fi
+ffmpeg -loglevel error -i "$staged/v.$ext" -frames:v 1 -q:v 2 "$staged/p.jpg" ||
+  fail "no se pudo extraer el poster"
+
+final=$name
+n=2
+while [[ -e $dest/$final.jpg || -e $dest/$final.mp4 || -e $dest/$final.webm ]]; do
+  final=$name-$n
+  n=$((n + 1))
+done
+
+# Video primero: el poster aparece en `bg next` solo cuando su video ya esta.
+mv "$staged/v.$ext" "$dest/$final.$ext"
+mv "$staged/p.jpg" "$dest/$final.jpg"
+
+omarchy theme bg set "$dest/$final.jpg"
+echo "Agregado: $dest/$final.jpg (+ .$ext)"
