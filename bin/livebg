@@ -14,7 +14,7 @@
 set -euo pipefail
 
 fail() { echo "livebg: $*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null || fail "falta '$1' (instalalo con: omarchy pkg add $1)"; }
+need() { command -v "$1" >/dev/null || fail "falta '$1' (instalalo desde el gestor de paquetes)"; }
 
 current=$HOME/.local/state/omarchy/current
 theme_name() { cat "$current/theme.name" 2>/dev/null || fail "no se pudo leer el tema actual"; }
@@ -45,7 +45,7 @@ fetch() {
       echo "progress $(($(du -sk "$out/dl" 2>/dev/null | cut -f1 || echo 0) / 1024))"
       sleep 1
     done
-    wait "$pid" || fail "yt-dlp no pudo descargar el video. Si YouTube cambio algo, actualiza yt-dlp: omarchy pkg add yt-dlp"
+    wait "$pid" || fail "yt-dlp no pudo descargar el video. Si YouTube cambio algo, actualiza yt-dlp desde el gestor de paquetes"
     video=$(find "$out/dl" -maxdepth 1 -type f -name '*.mp4' | head -1)
     [[ -n $video ]] || fail "yt-dlp no dejo un mp4"
   else
