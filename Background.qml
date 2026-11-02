@@ -1,3 +1,7 @@
+// Derived from Omarchy's shell/plugins/background/Background.qml
+// Copyright (c) David Heinemeier Hansson (MIT); modifications Copyright (c) 2026 CristoSolar (MIT).
+// See LICENSE for both notices.
+
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
